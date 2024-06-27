@@ -1,0 +1,274 @@
+#!/bin/bash
+pg_nm="wtc-fire"    
+boldblue="\e[1;3;36m"
+color_close="\e[0m"
+
+
+
+wtc_review2=$(wtc-lms reviews > wtc_all.yml)   
+wtc_review=wtc_all.yml
+
+
+reviewer_file(){
+    #Reloads wtc-lms reviewer
+wtc-lms reviews > wtc_all.yml   
+}
+
+
+# Function to check if a command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Function to ensure Maven is installed
+ensure_maven_installed() {
+    if ! command_exists mvn; then
+        echo "Maven is not installed. Install Maven to contiune..."
+        exit 1
+    fi
+}
+
+# Function to open VS Code with necessary extensions for Java
+open_vscode_with_java() {
+    # Check if VS Code is installed
+    if ! command_exists code; then
+        echo "Visual Studio Code is not installed. Please install it before proceeding."
+        exit 1
+    fi
+
+    # Check if the Java extension pack is installed
+    if ! code --list-extensions | grep -q 'vscjava.vscode-java-pack'; then
+        echo "Java Extension Pack is not installed. Installing..."
+        code --install-extension vscjava.vscode-java-pack
+    fi
+
+    # Open Visual Studio Code with the current directory
+    code "$1"
+}
+
+
+login_valid(){
+    #VAILDATING THAT USER HAS LOGGED IN
+
+while true; do
+if $(cat $wtc_review | grep -q "$1"); then
+    #Success
+    break
+elif $(cat $wtc_review grep -q "login");then
+    echo -e "Login to lms first \e[1;3;31m'wtc-lms login'${color_close}\n"
+    exit 0
+else
+break
+fi
+done
+}
+
+
+# Function to find IntelliJ IDEA if installed and launch it
+checking_intelij_path() {
+    echo "Searching for IntelliJ IDEA..."
+    local IDEA_PATH=$(find /opt /usr /home -name idea.sh 2>/dev/null)
+    
+    if [ -n "$IDEA_PATH" ]; then
+        echo "IntelliJ IDEA found at $IDEA_PATH"
+        "$IDEA_PATH" "$1" > /dev/null & 
+    else
+        echo "IntelliJ IDEA installation not found."
+    fi
+}
+
+# Function to launch the specified IDE with the given project directory
+launch_ide() {
+    # local project_dir=${1:-"."}
+    local ide_choice=${2:-"vscode"}  # Default to Visual Studio Code
+
+    case "$ide_choice" in
+        vscode)
+            echo "Opening Visual Studio Code with $1..."
+            code --new-window "$1"
+            ;;
+        intellij)
+            echo "Opening IntelliJ IDEA with $1..."
+            checking_intelij_path "$1" > /dev/null
+            ;;
+        *)
+            echo "Invalid IDE choice."
+            ;;
+    esac
+}
+
+# Main function to manage IDE launching
+main_ide_launch() {
+    local config_file="$HOME/.ide_choice"
+
+    if [ -f "$config_file" ]; then
+        local ide_choice=$(cat "$config_file")
+        launch_ide "$1" "$ide_choice"
+    else
+        echo "Select your default IDE:"
+        echo "1) Visual Studio Code"
+        echo "2) IntelliJ IDEA"
+        read -p "Enter choice (1 or 2): " input
+
+        case $input in
+            1)
+                echo "vscode" > "$config_file"
+                launch_ide "$1" "vscode"
+                ;;
+            2)
+                echo "intellij" > "$config_file"
+                launch_ide "$1" "intellij"
+                ;;
+            *)
+                echo "Invalid choice. Please run the script again."
+                ;;
+        esac
+    fi
+}
+
+review_exist(){
+    #CHECKING IF USER HAS UNCOMPLETE REVIEWS
+while true; do
+if $(cat $wtc_review | grep -q "$1"); then
+    #Success
+    break
+else
+    echo "No ["$1"] reviews.Try "$2""
+    exit 1
+fi
+done
+}
+
+
+comment_vaildator(){
+
+while  true; do
+    echo -n "Submit comment and complete review(y,N)"
+    read option_1
+    case "$option_1" in 
+        [Yy] )
+		break;;
+        [Nn] ) 
+        echo "Exiting out of program";
+        exit 0;;
+        * ) 
+        echo "Not a vaild option (y,N)";;
+    esac
+    
+done
+
+
+}
+
+
+vaild_uuid(){
+    #VAILDING USER CHOSE A VAILD UUID
+reviews_1=$(cat $wtc_review | grep "$1")
+while true; do
+if [[ "$reviews_1" =~ \("$1"\) ]]; then              
+    break
+elif [ "$1" == "exit" ]; then 
+    echo "Thank you for using wtc-fire."
+    exit 0
+else
+    echo "Not vaild uuid.Run 'wtc-fire run' again."
+    exit 1
+fi
+done
+}
+
+
+check_repo(){
+    #CHECKING IF GIT REPO IN LOCAL DIR AND DELETING IT
+if [ -d "$1" ]; then
+    echo -e "\e[1;3;33mRepo already exists.Updating it...${color_close}\n"
+    rm -rf "$1"
+fi
+}
+
+quotes_store(){
+    #KEEPS MOTIVATIONAL QUOTES AND JOKES
+echo "Laziness may appear attractive, but work gives satisfaction. – Anne Frank" > "$1"
+echo "The way to get started is to quit talking and begin doing. – Walt Disney" >> "$1"
+echo "A year from now you may wish you had started today. – Karen Lamb" >> "$1"
+echo "The secret of getting ahead is getting started. – Mark Twain" >> "$1"
+echo "Haha, I'm not making it that easy for you... - Mlilo" >> "$1"
+echo "$(shuf -n 1 "$1")"
+
+}
+
+
+if [ "$1" == "run" ]; then
+    while true;do
+    ensure_maven_installed
+    homedir=$( getent passwd "$USER" | cut -d: -f6 )
+    new_dir="$homedir/wtc_fire_reviews"
+    mkdir -p "$new_dir"
+    key_1="Assigned"
+    login_valid "$key_1"
+    cat $wtc_review | grep "$key_1" -m 1
+    cat $wtc_review | grep "$key_1" | tail -3
+    review_exist "$key_1" ""$pg_nm" accept"
+    echo -n "Exit with "exit" or Enter a uuid: " 
+    read uuid
+    vaild_uuid "$uuid"
+    review_details=$(wtc-lms review_details "$uuid" | grep "wethinkco")
+    echo -e "\n$review_details\n"
+    giturl=$(echo "$review_details" | grep -oP 'git@[^ ]+')
+    repo_name=$(basename "$giturl" .git)
+    check_repo "$new_dir/$repo_name"
+    git clone "$giturl" "$new_dir/$repo_name"
+    echo -e "\nTake your time to review the code...\n"
+    echo "$review_details" >> "$new_dir/$repo_name/review_details.log"
+    # main_ide_launch "$new_dir/$repo_name"
+    open_vscode_with_java "$new_dir/$repo_name"
+    sleep 15
+    clear
+    echo "$review_details"
+    echo -e "Find review details in ${boldblue}"$new_dir/$repo_name/review_details.log"${color_close}\n"
+    echo -e "Cloned into ${boldblue}"$new_dir/$repo_name"${color_close}"
+    echo -n "Enter a detailed comment: " 
+    read comm_txt
+    while [[ ${#comm_txt} -le 20 ]]
+    do
+        echo -n "Enter a descriptive comment greater than 20 charaters. Try again...: "
+        read comm_txt
+    done
+    echo "The comment you entered is: \"$comm_txt\""
+    comment_vaildator
+    wtc-lms add_comment "$uuid" "$comm_txt"
+    wtc-lms complete_review "$uuid"
+    echo -e "${boldblue}Successfully completed review.Fetching other reviews${color_close}\n"
+    reviewer_file
+    done
+
+
+elif [ "$1" == "accept" ]; then
+    echo "Fetching reviews.."
+    key_1="Invited"
+    login_valid "$key_1"
+    while true; 
+    do
+    review_exist "$key_1" "$pg_nm run"
+    cat $wtc_review | grep "$key_1" -m 2
+    cat $wtc_review | grep "$key_1" | tail -2
+    echo -n "Exit with "exit" or Enter uuid to accpet review: " 
+    read uuid
+    vaild_uuid "$uuid"
+    wtc-lms accept "$uuid" | grep "accept"
+    sleep 2
+    clear
+    reviewer_file
+    done
+
+elif [ "$1" == "crazy_mode" ]; then
+    quotes_store "joke.log"
+    exit 1
+else
+    echo -e "Login to lms first \e[1;3;31m'wtc-lms login'${color_close}\n"
+    echo -e "To normaly do reviews use ${boldblue}'"$pg_nm" run'${color_close}[Assigned]"
+    echo -e "To quickly accept reviews use ${boldblue}'"$pg_nm" accept'${color_close}[Invited]"
+    echo -e "Does everything for you ${boldblue}'"$pg_nm" crazy_mode'${color_close}"
+    exit 0
+fi
+
